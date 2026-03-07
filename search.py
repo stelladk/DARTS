@@ -6,6 +6,7 @@ import numpy as np
 from config import SearchConfig
 import utils
 from models.search_cnn import SearchCNNController
+from models.augment_cnn import AugmentCNN
 from architect import Architect
 from visualize import plot
 from logger import Logger
@@ -112,13 +113,19 @@ def main():
             is_best = False
         utils.save_checkpoint(model, config.path, is_best)
         exp_logger.log_pytorch_model(model, f"DARTS_{config.dataset}", x=None, path=config.tmpdir, run_id=False)
-        count = count_parameters(model)
-        exp_logger.log_metric("training/nb of parameters", count, epoch, "epoch")
 
         print("")
 
     logger.info("Final best Prec@1 = {:.4%}".format(best_top1))
     logger.info("Best Genotype = {}".format(best_genotype))
+
+    # Count parameters of the discovered genotype (not the supernet)
+    genotype_model = AugmentCNN(input_size, input_channels, config.init_channels,
+                                n_classes, config.layers, auxiliary=False, genotype=best_genotype)
+    genotype_nb = count_parameters(genotype_model)
+    logger.info("Best genotype nb of parameters = {}".format(genotype_nb))
+    exp_logger.log_metric("training/nb of parameters", genotype_nb, config.epochs, "epoch")
+
     exp_logger.end_run()
 
 
@@ -205,6 +212,10 @@ def validate(valid_loader, model, epoch, cur_step):
     logger.info("Valid: [{:2d}/{}] Final Prec@1 {:.4%}".format(epoch+1, config.epochs, top1.avg))
 
     return top1.avg
+
+
+def count_parameters(model):
+    return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
 
 if __name__ == "__main__":

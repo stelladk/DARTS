@@ -6,11 +6,14 @@ import torch
 import torchvision.datasets as dset
 import numpy as np
 import preproc
+from datasets import CUSTOM_DATASETS, N_CLASSES
 
 
 def get_data(dataset, data_path, cutout_length, validation):
-    """ Get torchvision dataset """
+    """ Get dataset (torchvision or custom NpyWebDataset) """
     dataset = dataset.lower()
+
+    trn_transform, val_transform = preproc.data_transforms(dataset, cutout_length)
 
     if dataset == 'cifar10':
         dset_cls = dset.CIFAR10
@@ -21,20 +24,30 @@ def get_data(dataset, data_path, cutout_length, validation):
     elif dataset == 'fashionmnist':
         dset_cls = dset.FashionMNIST
         n_classes = 10
+    elif dataset in CUSTOM_DATASETS:
+        dset_cls = CUSTOM_DATASETS[dataset]
+        n_classes = N_CLASSES[dataset]
     else:
-        raise ValueError(dataset)
+        raise ValueError('Unknown dataset: {}'.format(dataset))
 
-    trn_transform, val_transform = preproc.data_transforms(dataset, cutout_length)
     trn_data = dset_cls(root=data_path, train=True, download=True, transform=trn_transform)
 
-    # assuming shape is NHW or NHWC
-    shape = trn_data.train_data.shape
-    input_channels = 3 if len(shape) == 4 else 1
-    assert shape[1] == shape[2], "not expected shape = {}".format(shape)
-    input_size = shape[1]
+    # Determine input shape from raw data attribute (before transforms)
+    if hasattr(trn_data, 'train_data'):
+        # Legacy torchvision attribute (torchvision <= 0.4): NHW or NHWC
+        shape = trn_data.train_data.shape
+        input_channels = 3 if len(shape) == 4 else 1
+        input_size = shape[1]
+    elif hasattr(trn_data, 'data') and hasattr(trn_data.data, 'shape'):
+        # NpyWebDataset (NHWC after transpose in __init__) or newer torchvision
+        shape = trn_data.data.shape
+        input_channels = shape[3] if len(shape) == 4 else 1
+        input_size = shape[1]
+    else:
+        raise ValueError('Cannot determine input shape for dataset: {}'.format(dataset))
 
     ret = [input_size, input_channels, n_classes, trn_data]
-    if validation: # append validation data
+    if validation:  # append validation data
         ret.append(dset_cls(root=data_path, train=False, download=True, transform=val_transform))
 
     return ret

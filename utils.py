@@ -2,6 +2,7 @@
 import os
 import logging
 import shutil
+import pathlib
 import torch
 import torchvision.datasets as dset
 import numpy as np
@@ -59,8 +60,8 @@ def get_logger(file_path):
     logger = logging.getLogger('darts')
     log_format = '%(asctime)s | %(message)s'
     formatter = logging.Formatter(log_format, datefmt='%m/%d %I:%M:%S %p')
-    if not os.path.exists(file_path):
-        os.makedirs(file_path)
+    directory = pathlib.PurePath(file_path).parent
+    pathlib.Path(directory).mkdir(parents=True, exist_ok=True)
     file_handler = logging.FileHandler(file_path)
     file_handler.setFormatter(formatter)
     stream_handler = logging.StreamHandler()

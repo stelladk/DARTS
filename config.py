@@ -65,6 +65,16 @@ class SearchConfig(BaseConfig):
         parser.add_argument('--alpha_lr', type=float, default=3e-4, help='lr for alpha')
         parser.add_argument('--alpha_weight_decay', type=float, default=1e-3,
                             help='weight decay for alpha')
+        parser.add_argument("--logger", type=bool, default=True)
+        parser.add_argument("--api", type=str, default="wandb")
+        parser.add_argument("--exp_name", type=str, default="NAS")
+        parser.add_argument("--port", type=int, default=27028)
+        parser.add_argument(
+            "--log_path",
+            type=str,
+            default="/data/iceberg_1/titanic_1/experimentslogs_shared/tau_frugal/stella/",
+        )
+        parser.add_argument("--tmpdir", type=str, default="temp")
 
         return parser
 
@@ -106,6 +116,16 @@ class AugmentConfig(BaseConfig):
         parser.add_argument('--drop_path_prob', type=float, default=0.2, help='drop path prob')
 
         parser.add_argument('--genotype', required=True, help='Cell genotype')
+        parser.add_argument("--logger", type=bool, default=True)
+        parser.add_argument("--api", type=str, default="wandb")
+        parser.add_argument("--exp_name", type=str, default="NAS")
+        parser.add_argument("--port", type=int, default=27028)
+        parser.add_argument(
+            "--log_path",
+            type=str,
+            default="/data/iceberg_1/titanic_1/experimentslogs_shared/tau_frugal/stella/",
+        )
+        parser.add_argument("--tmpdir", type=str, default="temp")
 
         return parser
 

@@ -3,25 +3,30 @@ import os
 import torch
 import torch.nn as nn
 import numpy as np
-from tensorboardX import SummaryWriter
 from config import AugmentConfig
 import utils
 from models.augment_cnn import AugmentCNN
+from logger import Logger
 
 
 config = AugmentConfig()
 
 device = torch.device("cuda")
 
-# tensorboard
-writer = SummaryWriter(log_dir=os.path.join(config.path, "tb"))
-writer.add_text('config', config.as_markdown(), 0)
+# experiment logger
+exp_logger = Logger(experiment_name=config.exp_name, port=config.port, api=config.api, enabled=config.logger)
+exp_logger.setup_tracking(file_path=config.log_path)
 
 logger = utils.get_logger(os.path.join(config.path, "{}.log".format(config.name)))
 config.print_params(logger.info)
 
 
 def main():
+    exp_logger.start_run(group="DARTS")
+    for attr, value in sorted(vars(config).items()):
+        if attr in ("logger", "api", "exp_name", "port", "log_path", "tmpdir"):
+            continue
+        exp_logger.log_parameter(attr, str(value))
     logger.info("Logger is set - training start")
 
     # set default gpu device id
@@ -89,6 +94,7 @@ def main():
         print("")
 
     logger.info("Final best Prec@1 = {:.4%}".format(best_top1))
+    exp_logger.end_run()
 
 
 def train(train_loader, model, optimizer, criterion, epoch):
@@ -99,7 +105,7 @@ def train(train_loader, model, optimizer, criterion, epoch):
     cur_step = epoch*len(train_loader)
     cur_lr = optimizer.param_groups[0]['lr']
     logger.info("Epoch {} LR {}".format(epoch, cur_lr))
-    writer.add_scalar('train/lr', cur_lr, cur_step)
+    exp_logger.log_metric('training/lrate', cur_lr, cur_step)
 
     model.train()
 
@@ -129,9 +135,9 @@ def train(train_loader, model, optimizer, criterion, epoch):
                     epoch+1, config.epochs, step, len(train_loader)-1, losses=losses,
                     top1=top1, top5=top5))
 
-        writer.add_scalar('train/loss', loss.item(), cur_step)
-        writer.add_scalar('train/top1', prec1.item(), cur_step)
-        writer.add_scalar('train/top5', prec5.item(), cur_step)
+        exp_logger.log_metric('training/train loss', loss.item(), cur_step)
+        exp_logger.log_metric('training/train accuracy', prec1.item(), cur_step)
+        exp_logger.log_metric('training/train top5', prec5.item(), cur_step)
         cur_step += 1
 
     logger.info("Train: [{:3d}/{}] Final Prec@1 {:.4%}".format(epoch+1, config.epochs, top1.avg))
@@ -164,9 +170,9 @@ def validate(valid_loader, model, criterion, epoch, cur_step):
                         epoch+1, config.epochs, step, len(valid_loader)-1, losses=losses,
                         top1=top1, top5=top5))
 
-    writer.add_scalar('val/loss', losses.avg, cur_step)
-    writer.add_scalar('val/top1', top1.avg, cur_step)
-    writer.add_scalar('val/top5', top5.avg, cur_step)
+    exp_logger.log_metric('training/val loss', losses.avg, cur_step)
+    exp_logger.log_metric('training/val accuracy', top1.avg, cur_step)
+    exp_logger.log_metric('training/val top5', top5.avg, cur_step)
 
     logger.info("Valid: [{:3d}/{}] Final Prec@1 {:.4%}".format(epoch+1, config.epochs, top1.avg))
 

@@ -111,6 +111,10 @@ def main():
         else:
             is_best = False
         utils.save_checkpoint(model, config.path, is_best)
+        exp_logger.log_pytorch_model(model, f"DARTS_{config.dataset}", x=None, path=config.tmpdir, run_id=False)
+        count = count_parameters(model)
+        exp_logger.log_metric("training/nb of parameters", count, epoch, "epoch")
+
         print("")
 
     logger.info("Final best Prec@1 = {:.4%}".format(best_top1))

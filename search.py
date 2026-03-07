@@ -128,7 +128,7 @@ def train(train_loader, valid_loader, model, architect, w_optim, alpha_optim, lr
     losses = utils.AverageMeter()
 
     cur_step = epoch*len(train_loader)
-    exp_logger.log_metric('training/lrate', lr, cur_step)
+    exp_logger.log_metric('training/lrate', lr, epoch, "epoch")
 
     model.train()
 
@@ -163,11 +163,11 @@ def train(train_loader, valid_loader, model, architect, w_optim, alpha_optim, lr
                     epoch+1, config.epochs, step, len(train_loader)-1, losses=losses,
                     top1=top1, top5=top5))
 
-        exp_logger.log_metric('training/train loss', loss.item(), cur_step)
-        exp_logger.log_metric('training/train accuracy', prec1.item(), cur_step)
-        exp_logger.log_metric('training/train top5', prec5.item(), cur_step)
         cur_step += 1
 
+    exp_logger.log_metric('training/train loss', losses.avg, epoch, "epoch")
+    exp_logger.log_metric('training/train accuracy', top1.avg, epoch, "epoch")
+    exp_logger.log_metric('training/train top5', top5.avg, epoch, "epoch")
     logger.info("Train: [{:2d}/{}] Final Prec@1 {:.4%}".format(epoch+1, config.epochs, top1.avg))
 
 
@@ -198,9 +198,9 @@ def validate(valid_loader, model, epoch, cur_step):
                         epoch+1, config.epochs, step, len(valid_loader)-1, losses=losses,
                         top1=top1, top5=top5))
 
-    exp_logger.log_metric('training/val loss', losses.avg, cur_step)
-    exp_logger.log_metric('training/val accuracy', top1.avg, cur_step)
-    exp_logger.log_metric('training/val top5', top5.avg, cur_step)
+    exp_logger.log_metric('training/val loss', losses.avg, epoch, "epoch")
+    exp_logger.log_metric('training/val accuracy', top1.avg, epoch, "epoch")
+    exp_logger.log_metric('training/val top5', top5.avg, epoch, "epoch")
 
     logger.info("Valid: [{:2d}/{}] Final Prec@1 {:.4%}".format(epoch+1, config.epochs, top1.avg))
 

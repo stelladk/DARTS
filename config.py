@@ -65,6 +65,7 @@ class SearchConfig(BaseConfig):
         parser.add_argument('--alpha_lr', type=float, default=3e-4, help='lr for alpha')
         parser.add_argument('--alpha_weight_decay', type=float, default=1e-3,
                             help='weight decay for alpha')
+        parser.add_argument('--cutout_length', type=int, default=0, help='cutout length')
         
         # Logger
         parser.add_argument("--logger", type=bool, default=True)

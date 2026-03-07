@@ -59,6 +59,8 @@ def get_logger(file_path):
     logger = logging.getLogger('darts')
     log_format = '%(asctime)s | %(message)s'
     formatter = logging.Formatter(log_format, datefmt='%m/%d %I:%M:%S %p')
+    if not os.path.exists(file_path):
+        os.makedirs(file_path)
     file_handler = logging.FileHandler(file_path)
     file_handler.setFormatter(formatter)
     stream_handler = logging.StreamHandler()

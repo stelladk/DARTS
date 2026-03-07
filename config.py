@@ -65,6 +65,8 @@ class SearchConfig(BaseConfig):
         parser.add_argument('--alpha_lr', type=float, default=3e-4, help='lr for alpha')
         parser.add_argument('--alpha_weight_decay', type=float, default=1e-3,
                             help='weight decay for alpha')
+        
+        # Logger
         parser.add_argument("--logger", type=bool, default=True)
         parser.add_argument("--api", type=str, default="wandb")
         parser.add_argument("--exp_name", type=str, default="NAS")
@@ -75,6 +77,9 @@ class SearchConfig(BaseConfig):
             default="/data/iceberg_1/titanic_1/experimentslogs_shared/tau_frugal/stella/",
         )
         parser.add_argument("--tmpdir", type=str, default="temp")
+        
+        # NpyWebDatasets
+        parser.add_argument("--data", type=str, default="data")
 
         return parser
 
@@ -83,7 +88,7 @@ class SearchConfig(BaseConfig):
         args = parser.parse_args()
         super().__init__(**vars(args))
 
-        self.data_path = './data/'
+        self.data_path = self.data
         self.path = os.path.join('searchs', self.name)
         self.plot_path = os.path.join(self.path, 'plots')
         self.gpus = parse_gpus(self.gpus)
@@ -116,6 +121,8 @@ class AugmentConfig(BaseConfig):
         parser.add_argument('--drop_path_prob', type=float, default=0.2, help='drop path prob')
 
         parser.add_argument('--genotype', required=True, help='Cell genotype')
+        
+        # Logger
         parser.add_argument("--logger", type=bool, default=True)
         parser.add_argument("--api", type=str, default="wandb")
         parser.add_argument("--exp_name", type=str, default="NAS")
@@ -126,6 +133,9 @@ class AugmentConfig(BaseConfig):
             default="/data/iceberg_1/titanic_1/experimentslogs_shared/tau_frugal/stella/",
         )
         parser.add_argument("--tmpdir", type=str, default="temp")
+        
+        # NpyWebDatasets
+        parser.add_argument("--data", type=str, default="data")
 
         return parser
 
@@ -134,7 +144,7 @@ class AugmentConfig(BaseConfig):
         args = parser.parse_args()
         super().__init__(**vars(args))
 
-        self.data_path = './data/'
+        self.data_path = self.data
         self.path = os.path.join('augments', self.name)
         self.genotype = gt.from_str(self.genotype)
         self.gpus = parse_gpus(self.gpus)

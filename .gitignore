@@ -2,3 +2,7 @@
 *.swp
 .vscode
 searchs/
+.env
+temp/
+slurm/
+run.sh

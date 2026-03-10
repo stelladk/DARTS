@@ -10,11 +10,11 @@ import preproc
 from datasets import CUSTOM_DATASETS, N_CLASSES
 
 
-def get_data(dataset, data_path, cutout_length, validation):
+def get_data(dataset, data_path, cutout_length, validation, no_augment=False):
     """ Get dataset (torchvision or custom NpyWebDataset) """
     dataset = dataset.lower()
 
-    trn_transform, val_transform = preproc.data_transforms(dataset, cutout_length)
+    trn_transform, val_transform = preproc.data_transforms(dataset, cutout_length, no_augment)
 
     if dataset == 'cifar10':
         dset_cls = dset.CIFAR10

@@ -41,7 +41,8 @@ def main():
 
     # get data with meta info
     input_size, input_channels, n_classes, train_data, valid_data = utils.get_data(
-        config.dataset, config.data_path, config.cutout_length, validation=True)
+        config.dataset, config.data_path, config.cutout_length, validation=True,
+        no_augment=config.no_augment)
 
     criterion = nn.CrossEntropyLoss().to(device)
     use_aux = config.aux_weight > 0.

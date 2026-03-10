@@ -1,7 +1,15 @@
 import torch
-import torch.nn as nn
 import numpy as np
 import torchvision.transforms as transforms
+
+from tools.augmentations import (
+    get_transforms, default_augmentations, npy_datasets,
+)
+
+# DARTS uses 'fashionmnist'; experimental_grow uses 'fashion-mnist'
+_NAME_MAP = {
+    "fashionmnist": "fashion-mnist",
+}
 
 
 class Cutout(object):
@@ -27,48 +35,23 @@ class Cutout(object):
         return img
 
 
-def data_transforms(dataset, cutout_length):
+def data_transforms(dataset, cutout_length, no_augment=False):
     dataset = dataset.lower()
-    if dataset == 'cifar10':
-        MEAN = [0.49139968, 0.48215827, 0.44653124]
-        STD = [0.24703233, 0.24348505, 0.26158768]
-        transf = [
-            transforms.RandomCrop(32, padding=4),
-            transforms.RandomHorizontalFlip()
-        ]
-    elif dataset == 'mnist':
-        MEAN = [0.13066051707548254]
-        STD = [0.30810780244715075]
-        transf = [
-            transforms.RandomAffine(degrees=15, translate=(0.1, 0.1), scale=(0.9, 1.1), shear=0.1)
-        ]
-    elif dataset == 'fashionmnist':
-        MEAN = [0.28604063146254594]
-        STD = [0.35302426207299326]
-        transf = [
-            transforms.RandomAffine(degrees=15, translate=(0.1, 0.1), scale=(0.9, 1.1), shear=0.1),
-            transforms.RandomVerticalFlip()
-        ]
-    elif dataset in ('addnist', 'multnist', 'cifartile', 'language',
-                     'gutenberg', 'geoclassing', 'chesseract', 'gameoflife'):
-        # Pre-normalized float data stored as HWC numpy arrays; ToTensor transposes to CHW
-        train_transform = transforms.Compose([transforms.ToTensor()])
-        valid_transform = transforms.Compose([transforms.ToTensor()])
-        if cutout_length > 0:
-            train_transform.transforms.append(Cutout(cutout_length))
-        return train_transform, valid_transform
+    ext_name = _NAME_MAP.get(dataset, dataset)
+
+    augmentations = None if no_augment else default_augmentations.get(ext_name)
+    base, aug = get_transforms(ext_name, augmentations)
+
+    if dataset in npy_datasets:
+        # npy: data is already float tensors after ToTensor; augment after
+        train_transform = transforms.Compose(base + aug)
+        valid_transform = transforms.Compose(base)
     else:
-        raise ValueError('not expected dataset = {}'.format(dataset))
+        # PIL datasets: augment on PIL images before ToTensor+Normalize
+        train_transform = transforms.Compose(aug + base)
+        valid_transform = transforms.Compose(base)
 
-    normalize = [
-        transforms.ToTensor(),
-        transforms.Normalize(MEAN, STD)
-    ]
-
-    train_transform = transforms.Compose(transf + normalize)
-    valid_transform = transforms.Compose(normalize)
-
-    if cutout_length > 0:
+    if cutout_length > 0 and not no_augment:
         train_transform.transforms.append(Cutout(cutout_length))
 
     return train_transform, valid_transform

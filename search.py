@@ -44,7 +44,8 @@ def main():
 
     # get data with meta info
     input_size, input_channels, n_classes, train_data = utils.get_data(
-        config.dataset, config.data_path, cutout_length=config.cutout_length, validation=False)
+        config.dataset, config.data_path, cutout_length=config.cutout_length, validation=False,
+        no_augment=config.no_augment)
 
     net_crit = nn.CrossEntropyLoss().to(device)
     model = SearchCNNController(input_channels, config.init_channels, n_classes, config.layers,

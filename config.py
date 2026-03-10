@@ -66,7 +66,8 @@ class SearchConfig(BaseConfig):
         parser.add_argument('--alpha_weight_decay', type=float, default=1e-3,
                             help='weight decay for alpha')
         parser.add_argument('--cutout_length', type=int, default=0, help='cutout length')
-        
+        parser.add_argument('--no_augment', action='store_true', help='disable all data augmentation')
+
         # Logger
         parser.add_argument("--logger", type=bool, default=True)
         parser.add_argument("--api", type=str, default="wandb")
@@ -78,7 +79,7 @@ class SearchConfig(BaseConfig):
             default="/data/iceberg_1/titanic_1/experimentslogs_shared/tau_frugal/stella/",
         )
         parser.add_argument("--tmpdir", type=str, default="temp")
-        
+
         # NpyWebDatasets
         parser.add_argument("--data", type=str, default="data")
 
@@ -119,6 +120,7 @@ class AugmentConfig(BaseConfig):
         parser.add_argument('--workers', type=int, default=4, help='# of workers')
         parser.add_argument('--aux_weight', type=float, default=0.4, help='auxiliary loss weight')
         parser.add_argument('--cutout_length', type=int, default=16, help='cutout length')
+        parser.add_argument('--no_augment', action='store_true', help='disable all data augmentation')
         parser.add_argument('--drop_path_prob', type=float, default=0.2, help='drop path prob')
 
         parser.add_argument('--genotype', required=True, help='Cell genotype')

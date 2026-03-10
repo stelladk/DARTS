@@ -69,7 +69,7 @@ class SearchConfig(BaseConfig):
         parser.add_argument('--no_augment', action='store_true', help='disable all data augmentation')
 
         # Logger
-        parser.add_argument("--logger", type=bool, default=True)
+        parser.add_argument("--no-logger", action="store_true")
         parser.add_argument("--api", type=str, default="wandb")
         parser.add_argument("--exp_name", type=str, default="NAS")
         parser.add_argument("--port", type=int, default=27028)

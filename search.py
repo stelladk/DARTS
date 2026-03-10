@@ -17,7 +17,7 @@ config = SearchConfig()
 device = torch.device("cuda")
 
 # experiment logger
-exp_logger = Logger(experiment_name=config.exp_name, port=config.port, api=config.api, enabled=config.logger)
+exp_logger = Logger(experiment_name=config.exp_name, port=config.port, api=config.api, enabled=not config.no_logger)
 exp_logger.setup_tracking(file_path=config.log_path)
 
 logger = utils.get_logger(os.path.join(config.path, "{}.log".format(config.name)))

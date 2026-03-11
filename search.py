@@ -46,6 +46,9 @@ def main():
     input_size, input_channels, n_classes, train_data = utils.get_data(
         config.dataset, config.data_path, cutout_length=config.cutout_length, validation=False,
         no_augment=config.no_augment)
+    *_, test_data = utils.get_data(
+        config.dataset, config.data_path, cutout_length=0, validation=True,
+        no_augment=True)
 
     net_crit = nn.CrossEntropyLoss().to(device)
     model = SearchCNNController(input_channels, config.init_channels, n_classes, config.layers,
@@ -75,6 +78,11 @@ def main():
                                                sampler=valid_sampler,
                                                num_workers=config.workers,
                                                pin_memory=True)
+    test_loader = torch.utils.data.DataLoader(test_data,
+                                              batch_size=config.batch_size,
+                                              shuffle=False,
+                                              num_workers=config.workers,
+                                              pin_memory=True)
     lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
         w_optim, config.epochs, eta_min=config.w_lr_min)
     architect = Architect(model, config.w_momentum, config.w_weight_decay)
@@ -122,6 +130,26 @@ def main():
 
     logger.info("Final best Prec@1 = {:.4%}".format(best_top1))
     logger.info("Best Genotype = {}".format(best_genotype))
+
+    # Final test evaluation (uses base transforms, no aug — set up in test_loader)
+    top1_test = utils.AverageMeter()
+    top5_test = utils.AverageMeter()
+    losses_test = utils.AverageMeter()
+    model.eval()
+    with torch.no_grad():
+        for X, y in test_loader:
+            X, y = X.to(device, non_blocking=True), y.to(device, non_blocking=True)
+            logits = model(X)
+            loss = model.criterion(logits, y)
+            prec1, prec5 = utils.accuracy(logits, y, topk=(1, 5))
+            N = X.size(0)
+            losses_test.update(loss.item(), N)
+            top1_test.update(prec1.item(), N)
+            top5_test.update(prec5.item(), N)
+    logger.info("Test: Final Prec@1 {:.4%}  Loss {:.4f}".format(top1_test.avg, losses_test.avg))
+    exp_logger.log_metric("training/test accuracy", top1_test.avg, config.epochs, "epoch")
+    exp_logger.log_metric("training/test top5", top5_test.avg, config.epochs, "epoch")
+    exp_logger.log_metric("training/test loss", losses_test.avg, config.epochs, "epoch")
 
     # Count parameters of the discovered genotype (not the supernet)
     genotype_model = AugmentCNN(input_size, input_channels, config.init_channels,

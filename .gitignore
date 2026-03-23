@@ -5,4 +5,3 @@ searchs/
 .env
 temp/
 slurm/
-run.sh

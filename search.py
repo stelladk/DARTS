@@ -46,9 +46,6 @@ def main():
     input_size, input_channels, n_classes, train_data = utils.get_data(
         config.dataset, config.data_path, cutout_length=config.cutout_length, validation=False,
         no_augment=config.no_augment)
-    *_, test_data = utils.get_data(
-        config.dataset, config.data_path, cutout_length=0, validation=True,
-        no_augment=True)
 
     net_crit = nn.CrossEntropyLoss().to(device)
     model = SearchCNNController(input_channels, config.init_channels, n_classes, config.layers,
@@ -78,11 +75,7 @@ def main():
                                                sampler=valid_sampler,
                                                num_workers=config.workers,
                                                pin_memory=True)
-    test_loader = torch.utils.data.DataLoader(test_data,
-                                              batch_size=config.batch_size,
-                                              shuffle=False,
-                                              num_workers=config.workers,
-                                              pin_memory=True)
+
     lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
         w_optim, config.epochs, eta_min=config.w_lr_min)
     architect = Architect(model, config.w_momentum, config.w_weight_decay)
@@ -124,39 +117,20 @@ def main():
         else:
             is_best = False
         utils.save_checkpoint(model, config.path, is_best)
-        exp_logger.log_pytorch_model(model, f"DARTS_{config.dataset}", x=None, path=config.tmpdir, run_id=False)
 
         print("")
 
     logger.info("Final best Prec@1 = {:.4%}".format(best_top1))
     logger.info("Best Genotype = {}".format(best_genotype))
+    exp_logger.log_pytorch_model(model, f"DARTS_{config.dataset}", x=None, path=config.tmpdir, run_id=False)
 
-    # Final test evaluation (uses base transforms, no aug — set up in test_loader)
-    top1_test = utils.AverageMeter()
-    top5_test = utils.AverageMeter()
-    losses_test = utils.AverageMeter()
-    model.eval()
-    with torch.no_grad():
-        for X, y in test_loader:
-            X, y = X.to(device, non_blocking=True), y.to(device, non_blocking=True)
-            logits = model(X)
-            loss = model.criterion(logits, y)
-            prec1, prec5 = utils.accuracy(logits, y, topk=(1, 5))
-            N = X.size(0)
-            losses_test.update(loss.item(), N)
-            top1_test.update(prec1.item(), N)
-            top5_test.update(prec5.item(), N)
-    logger.info("Test: Final Prec@1 {:.4%}  Loss {:.4f}".format(top1_test.avg, losses_test.avg))
-    exp_logger.log_metric("training/test accuracy", top1_test.avg, config.epochs, "epoch")
-    exp_logger.log_metric("training/test top5", top5_test.avg, config.epochs, "epoch")
-    exp_logger.log_metric("training/test loss", losses_test.avg, config.epochs, "epoch")
+    # Evaluation phase: train and evaluate the discovered architecture ===
+    logger.info("=" * 60)
+    logger.info("Starting evaluation phase: training discovered architecture")
+    logger.info("=" * 60)
 
-    # Count parameters of the discovered genotype (not the supernet)
-    genotype_model = AugmentCNN(input_size, input_channels, config.init_channels,
-                                n_classes, config.layers, auxiliary=False, genotype=best_genotype)
-    genotype_nb = count_parameters(genotype_model)
-    logger.info("Best genotype nb of parameters = {}".format(genotype_nb))
-    exp_logger.log_metric("training/nb of parameters", genotype_nb, config.epochs, "epoch")
+    evaluate_architecture(best_genotype, input_size, input_channels, n_classes)
+
 
     exp_logger.end_run()
 
@@ -167,7 +141,7 @@ def train(train_loader, valid_loader, model, architect, w_optim, alpha_optim, lr
     losses = utils.AverageMeter()
 
     cur_step = epoch*len(train_loader)
-    exp_logger.log_metric('training/lrate', lr, epoch, "epoch")
+    exp_logger.log_metric('search/lrate', lr, epoch, "epoch")
 
     model.train()
 
@@ -204,9 +178,9 @@ def train(train_loader, valid_loader, model, architect, w_optim, alpha_optim, lr
 
         cur_step += 1
 
-    exp_logger.log_metric('training/train loss', losses.avg, epoch, "epoch")
-    exp_logger.log_metric('training/train accuracy', top1.avg, epoch, "epoch")
-    exp_logger.log_metric('training/train top5', top5.avg, epoch, "epoch")
+    exp_logger.log_metric('search/train loss', losses.avg, epoch, "epoch")
+    exp_logger.log_metric('search/train accuracy', top1.avg, epoch, "epoch")
+    exp_logger.log_metric('search/train top5', top5.avg, epoch, "epoch")
     logger.info("Train: [{:2d}/{}] Final Prec@1 {:.4%}".format(epoch+1, config.epochs, top1.avg))
 
 
@@ -237,11 +211,154 @@ def validate(valid_loader, model, epoch, cur_step):
                         epoch+1, config.epochs, step, len(valid_loader)-1, losses=losses,
                         top1=top1, top5=top5))
 
-    exp_logger.log_metric('training/val loss', losses.avg, epoch, "epoch")
-    exp_logger.log_metric('training/val accuracy', top1.avg, epoch, "epoch")
-    exp_logger.log_metric('training/val top5', top5.avg, epoch, "epoch")
+    exp_logger.log_metric('search/val loss', losses.avg, epoch, "epoch")
+    exp_logger.log_metric('search/val accuracy', top1.avg, epoch, "epoch")
+    exp_logger.log_metric('search/val top5', top5.avg, epoch, "epoch")
 
     logger.info("Valid: [{:2d}/{}] Final Prec@1 {:.4%}".format(epoch+1, config.epochs, top1.avg))
+
+    return top1.avg
+
+
+def evaluate_architecture(genotype, input_size, input_channels, n_classes):
+    """Train the discovered architecture from scratch and evaluate on test set."""
+    # Load data with same augmentation as search phase (no cutout)
+    *_, eval_train_data = utils.get_data(
+        config.dataset, config.data_path, cutout_length=config.cutout_length,
+        validation=False, no_augment=config.no_augment)
+    *_, test_data = utils.get_data(
+        config.dataset, config.data_path, cutout_length=0,
+        validation=True, no_augment=True)
+
+    eval_train_loader = torch.utils.data.DataLoader(eval_train_data,
+                                                     batch_size=config.batch_size,
+                                                     shuffle=True,
+                                                     num_workers=config.workers,
+                                                     pin_memory=True)
+    test_loader = torch.utils.data.DataLoader(test_data,
+                                               batch_size=config.batch_size,
+                                               shuffle=False,
+                                               num_workers=config.workers,
+                                               pin_memory=True)
+
+    # Build the discrete architecture
+    criterion = nn.CrossEntropyLoss().to(device)
+    use_aux = config.eval_aux_weight > 0.
+    eval_model = AugmentCNN(input_size, input_channels, config.eval_init_channels,
+                            n_classes, config.eval_layers, use_aux, genotype)
+    eval_model = nn.DataParallel(eval_model, device_ids=config.gpus).to(device)
+
+    mb_params = utils.param_size(eval_model)
+    logger.info("Eval model size = {:.3f} MB".format(mb_params))
+    exp_logger.log_metric("training/nb of parameters", count_parameters(eval_model.module),
+                          0, "epoch")
+
+    # Optimizer and scheduler
+    optimizer = torch.optim.SGD(eval_model.parameters(), config.eval_lr,
+                                momentum=config.w_momentum,
+                                weight_decay=config.w_weight_decay)
+    lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+        optimizer, config.eval_epochs)
+
+    # Training loop
+    best_top1 = 0.
+    for epoch in range(config.eval_epochs):
+        lr_scheduler.step()
+        drop_prob = config.eval_drop_path_prob * epoch / config.eval_epochs
+        eval_model.module.drop_path_prob(drop_prob)
+
+        # Train one epoch
+        eval_train_epoch(eval_train_loader, eval_model, optimizer, criterion, epoch)
+
+        # Validate on test set
+        top1 = eval_validate(test_loader, eval_model, criterion, epoch)
+
+        if best_top1 < top1:
+            best_top1 = top1
+            utils.save_checkpoint(eval_model, config.path, is_best=True)
+
+    logger.info("Eval: Final best test Prec@1 = {:.4%}".format(best_top1))
+    best_ckpt = torch.load(os.path.join(config.path, 'best.pth.tar'))
+    eval_model.load_state_dict(best_ckpt.state_dict())
+    exp_logger.log_pytorch_model(eval_model, f"DARTS_{config.dataset}_eval", x=None, path=config.tmpdir, run_id=False)
+
+
+def eval_train_epoch(train_loader, model, optimizer, criterion, epoch):
+    """Train the evaluation model for one epoch."""
+    top1 = utils.AverageMeter()
+    top5 = utils.AverageMeter()
+    losses = utils.AverageMeter()
+
+    cur_lr = optimizer.param_groups[0]['lr']
+    exp_logger.log_metric('training/lrate', cur_lr, epoch, "epoch")
+
+    model.train()
+
+    for step, (X, y) in enumerate(train_loader):
+        X, y = X.to(device, non_blocking=True), y.to(device, non_blocking=True)
+        N = X.size(0)
+
+        optimizer.zero_grad()
+        logits, aux_logits = model(X)
+        loss = criterion(logits, y)
+        if config.eval_aux_weight > 0.:
+            loss += config.eval_aux_weight * criterion(aux_logits, y)
+        loss.backward()
+        nn.utils.clip_grad_norm_(model.parameters(), config.eval_grad_clip)
+        optimizer.step()
+
+        prec1, prec5 = utils.accuracy(logits, y, topk=(1, 5))
+        losses.update(loss.item(), N)
+        top1.update(prec1.item(), N)
+        top5.update(prec5.item(), N)
+
+        if step % config.print_freq == 0 or step == len(train_loader)-1:
+            logger.info(
+                "Eval Train: [{:3d}/{}] Step {:03d}/{:03d} Loss {losses.avg:.3f} "
+                "Prec@(1,5) ({top1.avg:.1%}, {top5.avg:.1%})".format(
+                    epoch+1, config.eval_epochs, step, len(train_loader)-1,
+                    losses=losses, top1=top1, top5=top5))
+
+    exp_logger.log_metric('training/train loss', losses.avg, epoch, "epoch")
+    exp_logger.log_metric('training/train accuracy', top1.avg, epoch, "epoch")
+    logger.info("Eval Train: [{:3d}/{}] Final Prec@1 {:.4%}".format(
+        epoch+1, config.eval_epochs, top1.avg))
+
+
+def eval_validate(test_loader, model, criterion, epoch):
+    """Evaluate the evaluation model on the test set."""
+    top1 = utils.AverageMeter()
+    top5 = utils.AverageMeter()
+    losses = utils.AverageMeter()
+
+    model.eval()
+
+    with torch.no_grad():
+        for step, (X, y) in enumerate(test_loader):
+            X, y = X.to(device, non_blocking=True), y.to(device, non_blocking=True)
+            N = X.size(0)
+
+            logits, _ = model(X)
+            loss = criterion(logits, y)
+
+            prec1, prec5 = utils.accuracy(logits, y, topk=(1, 5))
+            losses.update(loss.item(), N)
+            top1.update(prec1.item(), N)
+            top5.update(prec5.item(), N)
+
+            if step % config.print_freq == 0 or step == len(test_loader)-1:
+                logger.info(
+                    "Eval Test: [{:3d}/{}] Step {:03d}/{:03d} Loss {losses.avg:.3f} "
+                    "Prec@(1,5) ({top1.avg:.1%}, {top5.avg:.1%})".format(
+                        epoch+1, config.eval_epochs, step, len(test_loader)-1,
+                        losses=losses, top1=top1, top5=top5))
+
+    exp_logger.log_metric('training/test loss', losses.avg, epoch, "epoch")
+    exp_logger.log_metric('training/test accuracy', top1.avg, epoch, "epoch")
+    exp_logger.log_metric('training/test top5', top5.avg, epoch, "epoch")
+
+    logger.info("Eval Test: [{:3d}/{}] Final Prec@1 {:.4%}".format(
+        epoch+1, config.eval_epochs, top1.avg))
 
     return top1.avg
 

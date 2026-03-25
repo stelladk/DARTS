@@ -83,6 +83,23 @@ class SearchConfig(BaseConfig):
         # NpyWebDatasets
         parser.add_argument("--data", type=str, default="data")
 
+        # Evaluation (augment) phase after search
+        parser.add_argument('--eval_epochs', type=int, default=600,
+                            help='# of training epochs for evaluation phase')
+        parser.add_argument('--eval_init_channels', type=int, default=36,
+                            help='initial channels for evaluation model')
+        parser.add_argument('--eval_layers', type=int, default=20,
+                            help='# of layers for evaluation model')
+        parser.add_argument('--eval_aux_weight', type=float, default=0.4,
+                            help='auxiliary loss weight for evaluation')
+        parser.add_argument('--eval_drop_path_prob', type=float, default=0.2,
+                            help='drop path probability for evaluation')
+        parser.add_argument('--eval_lr', type=float, default=0.025,
+                            help='learning rate for evaluation training')
+        parser.add_argument('--eval_grad_clip', type=float, default=5.,
+                            help='gradient clipping for evaluation training')
+
+
         return parser
 
     def __init__(self):

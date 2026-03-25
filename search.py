@@ -141,7 +141,7 @@ def train(train_loader, valid_loader, model, architect, w_optim, alpha_optim, lr
     losses = utils.AverageMeter()
 
     cur_step = epoch*len(train_loader)
-    exp_logger.log_metric('search/lrate', lr, epoch, "epoch")
+    exp_logger.log_metric('search/lrate', lr, epoch, "search epoch")
 
     model.train()
 
@@ -178,9 +178,9 @@ def train(train_loader, valid_loader, model, architect, w_optim, alpha_optim, lr
 
         cur_step += 1
 
-    exp_logger.log_metric('search/train loss', losses.avg, epoch, "epoch")
-    exp_logger.log_metric('search/train accuracy', top1.avg, epoch, "epoch")
-    exp_logger.log_metric('search/train top5', top5.avg, epoch, "epoch")
+    exp_logger.log_metric('search/train loss', losses.avg, epoch, "search epoch")
+    exp_logger.log_metric('search/train accuracy', top1.avg, epoch, "search epoch")
+    exp_logger.log_metric('search/train top5', top5.avg, epoch, "search epoch")
     logger.info("Train: [{:2d}/{}] Final Prec@1 {:.4%}".format(epoch+1, config.epochs, top1.avg))
 
 
@@ -211,9 +211,9 @@ def validate(valid_loader, model, epoch, cur_step):
                         epoch+1, config.epochs, step, len(valid_loader)-1, losses=losses,
                         top1=top1, top5=top5))
 
-    exp_logger.log_metric('search/val loss', losses.avg, epoch, "epoch")
-    exp_logger.log_metric('search/val accuracy', top1.avg, epoch, "epoch")
-    exp_logger.log_metric('search/val top5', top5.avg, epoch, "epoch")
+    exp_logger.log_metric('search/val loss', losses.avg, epoch, "search epoch")
+    exp_logger.log_metric('search/val accuracy', top1.avg, epoch, "search epoch")
+    exp_logger.log_metric('search/val top5', top5.avg, epoch, "search epoch")
 
     logger.info("Valid: [{:2d}/{}] Final Prec@1 {:.4%}".format(epoch+1, config.epochs, top1.avg))
 

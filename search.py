@@ -1,4 +1,5 @@
 """ Search cell """
+import copy
 import os
 import torch
 import torch.nn as nn
@@ -262,6 +263,7 @@ def evaluate_architecture(genotype, input_size, input_channels, n_classes):
 
     # Training loop
     best_top1 = 0.
+    best_state_dict = None
     for epoch in range(config.eval_epochs):
         lr_scheduler.step()
         drop_prob = config.eval_drop_path_prob * epoch / config.eval_epochs
@@ -275,11 +277,10 @@ def evaluate_architecture(genotype, input_size, input_channels, n_classes):
 
         if best_top1 < top1:
             best_top1 = top1
-            utils.save_checkpoint(eval_model, config.path, is_best=True)
+            best_state_dict = copy.deepcopy(eval_model.state_dict())
 
     logger.info("Eval: Final best test Prec@1 = {:.4%}".format(best_top1))
-    best_ckpt = torch.load(os.path.join(config.path, 'best.pth.tar'))
-    eval_model.load_state_dict(best_ckpt.state_dict())
+    eval_model.load_state_dict(best_state_dict)
     exp_logger.log_pytorch_model(eval_model, f"DARTS_{config.dataset}_eval", x=None, path=config.tmpdir, run_id=False)
 
 

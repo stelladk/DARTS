@@ -160,6 +160,7 @@ class Gutenberg(NpyWebDataset):
             name="Gutenberg", train=train, root=root, download=download, transform=transform,
         )
         self.data = self.data.transpose(0, 2, 3, 1)
+        self.data = np.pad(self.data, ((0, 0), (0, 1), (1, 1), (0, 0)))  # H: 27→28, W: 18→20
 
 
 class GeoClassing(NpyWebDataset):

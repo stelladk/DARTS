@@ -7,13 +7,11 @@ from models import ops
 
 class AuxiliaryHead(nn.Module):
     """ Auxiliary head in 2/3 place of network to let the gradient flow well """
-    def __init__(self, input_size, C, n_classes):
-        """ assuming input size 7x7 or 8x8 """
-        assert input_size in [7, 8]
+    def __init__(self, C, n_classes):
         super().__init__()
         self.net = nn.Sequential(
             nn.ReLU(inplace=True),
-            nn.AvgPool2d(5, stride=input_size-5, padding=0, count_include_pad=False), # 2x2 out
+            nn.AdaptiveAvgPool2d((2, 2)),
             nn.Conv2d(C, 128, kernel_size=1, bias=False),
             nn.BatchNorm2d(128),
             nn.ReLU(inplace=True),
@@ -32,7 +30,7 @@ class AuxiliaryHead(nn.Module):
 
 class AugmentCNN(nn.Module):
     """ Augmented CNN model """
-    def __init__(self, input_size, C_in, C, n_classes, n_layers, auxiliary, genotype,
+    def __init__(self, C_in, C, n_classes, n_layers, auxiliary, genotype,
                  stem_multiplier=3):
         """
         Args:
@@ -75,7 +73,7 @@ class AugmentCNN(nn.Module):
             if i == self.aux_pos:
                 # [!] this auxiliary head is ignored in computing parameter size
                 #     by the name 'aux_head'
-                self.aux_head = AuxiliaryHead(input_size//4, C_p, n_classes)
+                self.aux_head = AuxiliaryHead(C_p, n_classes)
 
         self.gap = nn.AdaptiveAvgPool2d(1)
         self.linear = nn.Linear(C_p, n_classes)

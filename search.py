@@ -130,7 +130,7 @@ def main():
     logger.info("Starting evaluation phase: training discovered architecture")
     logger.info("=" * 60)
 
-    evaluate_architecture(best_genotype, input_size, input_channels, n_classes)
+    evaluate_architecture(best_genotype, input_channels, n_classes)
 
 
     exp_logger.end_run()
@@ -221,7 +221,7 @@ def validate(valid_loader, model, epoch, cur_step):
     return top1.avg
 
 
-def evaluate_architecture(genotype, input_size, input_channels, n_classes):
+def evaluate_architecture(genotype, input_channels, n_classes):
     """Train the discovered architecture from scratch and evaluate on test set."""
     # Load data with same augmentation as search phase (no cutout)
     *_, eval_train_data = utils.get_data(
@@ -245,7 +245,7 @@ def evaluate_architecture(genotype, input_size, input_channels, n_classes):
     # Build the discrete architecture
     criterion = nn.CrossEntropyLoss().to(device)
     use_aux = config.eval_aux_weight > 0.
-    eval_model = AugmentCNN(input_size, input_channels, config.eval_init_channels,
+    eval_model = AugmentCNN(input_channels, config.eval_init_channels,
                             n_classes, config.eval_layers, use_aux, genotype)
     eval_model = nn.DataParallel(eval_model, device_ids=config.gpus).to(device)
 

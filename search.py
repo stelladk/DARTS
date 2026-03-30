@@ -125,6 +125,12 @@ def main():
     logger.info("Best Genotype = {}".format(best_genotype))
     exp_logger.log_pytorch_model(model, f"DARTS_{config.dataset}", x=None, path=config.tmpdir, run_id=False)
 
+    # Free search-phase memory before evaluation
+    del model, architect, w_optim, alpha_optim, lr_scheduler
+    del train_loader, valid_loader, train_data
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
     # Evaluation phase: train and evaluate the discovered architecture ===
     logger.info("=" * 60)
     logger.info("Starting evaluation phase: training discovered architecture")

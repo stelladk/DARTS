@@ -118,6 +118,8 @@ class SearchConfig(BaseConfig):
         self.name = "{}-{}".format(self.name, int(time.time() * 1000))
         self.path = os.path.join('searchs', self.name)
         self.plot_path = os.path.join(self.path, 'plots')
+        os.makedirs(self.plot_path, exist_ok=True)
+        os.makedirs(self.tmpdir, exist_ok=True)
         self.gpus = parse_gpus(self.gpus)
 
 

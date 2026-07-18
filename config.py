@@ -1,6 +1,7 @@
 """ Config class for search/augment """
 import argparse
 import os
+import time
 import genotypes as gt
 from functools import partial
 import torch
@@ -99,6 +100,12 @@ class SearchConfig(BaseConfig):
         parser.add_argument('--eval_grad_clip', type=float, default=5.,
                             help='gradient clipping for evaluation training')
 
+        # checkpointing
+        parser.add_argument('--resume', type=str, default=None,
+                            help='Path to a checkpoint.pt (search or eval phase) to resume an '
+                                 'interrupted run from. The checkpoint records which phase it '
+                                 'belongs to, so this works whether the run was interrupted '
+                                 'during search or during the post-search evaluation training.')
 
         return parser
 
@@ -108,6 +115,7 @@ class SearchConfig(BaseConfig):
         super().__init__(**vars(args))
 
         self.data_path = self.data
+        self.name = "{}-{}".format(self.name, int(time.time() * 1000))
         self.path = os.path.join('searchs', self.name)
         self.plot_path = os.path.join(self.path, 'plots')
         self.gpus = parse_gpus(self.gpus)
@@ -165,6 +173,7 @@ class AugmentConfig(BaseConfig):
         super().__init__(**vars(args))
 
         self.data_path = self.data
+        self.name = "{}-{}".format(self.name, int(time.time() * 1000))
         self.path = os.path.join('augments', self.name)
         self.genotype = gt.from_str(self.genotype)
         self.gpus = parse_gpus(self.gpus)

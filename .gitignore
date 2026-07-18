@@ -5,3 +5,8 @@ searchs/
 .env
 temp/
 slurm/
+*.zip
+*.pt
+
+normal*
+reduction*

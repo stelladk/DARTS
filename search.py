@@ -25,6 +25,50 @@ logger = utils.get_logger(os.path.join(config.path, "{}.log".format(config.name)
 config.print_params(logger.info)
 
 
+# ── checkpoint / resume ──────────────────────────────────────────────
+# Each phase writes to a single fixed filename that gets overwritten every
+# epoch, so a long run never accumulates more than one checkpoint per phase.
+def save_search_checkpoint(path, next_epoch, model, w_optim, alpha_optim, lr_scheduler,
+                            best_top1, best_genotype):
+    torch.save({
+        "phase": "search",
+        "epoch": next_epoch,
+        "model_state": model.state_dict(),
+        "w_optim_state": w_optim.state_dict(),
+        "alpha_optim_state": alpha_optim.state_dict(),
+        "lr_scheduler_state": lr_scheduler.state_dict(),
+        "best_top1": best_top1,
+        "best_genotype": best_genotype,
+    }, path)
+
+
+def load_search_checkpoint(ckpt, model, w_optim, alpha_optim, lr_scheduler):
+    model.load_state_dict(ckpt["model_state"])
+    w_optim.load_state_dict(ckpt["w_optim_state"])
+    alpha_optim.load_state_dict(ckpt["alpha_optim_state"])
+    lr_scheduler.load_state_dict(ckpt["lr_scheduler_state"])
+
+
+def save_eval_checkpoint(path, next_epoch, genotype, model, optimizer, lr_scheduler,
+                          best_top1, best_state_dict):
+    torch.save({
+        "phase": "eval",
+        "epoch": next_epoch,
+        "genotype": genotype,
+        "model_state": model.state_dict(),
+        "optimizer_state": optimizer.state_dict(),
+        "lr_scheduler_state": lr_scheduler.state_dict(),
+        "best_top1": best_top1,
+        "best_state_dict": best_state_dict,
+    }, path)
+
+
+def load_eval_checkpoint(ckpt, model, optimizer, lr_scheduler):
+    model.load_state_dict(ckpt["model_state"])
+    optimizer.load_state_dict(ckpt["optimizer_state"])
+    lr_scheduler.load_state_dict(ckpt["lr_scheduler_state"])
+
+
 def main():
     exp_logger.start_run(group="DARTS")
     for attr, value in sorted(vars(config).items()):
@@ -48,96 +92,137 @@ def main():
         config.dataset, config.data_path, cutout_length=config.cutout_length, validation=False,
         no_augment=config.no_augment)
 
-    net_crit = nn.CrossEntropyLoss().to(device)
-    model = SearchCNNController(input_channels, config.init_channels, n_classes, config.layers,
-                                net_crit, device_ids=config.gpus)
-    model = model.to(device)
+    # A single checkpoint file per phase, overwritten every epoch, so an
+    # interrupted run never leaves behind more than one file per phase.
+    search_ckpt_path = os.path.join(config.path, "checkpoint.pt")
+    eval_ckpt_path = os.path.join(config.path, "eval_checkpoint.pt")
 
-    # weights optimizer
-    w_optim = torch.optim.SGD(model.weights(), config.w_lr, momentum=config.w_momentum,
-                              weight_decay=config.w_weight_decay)
-    # alphas optimizer
-    alpha_optim = torch.optim.Adam(model.alphas(), config.alpha_lr, betas=(0.5, 0.999),
-                                   weight_decay=config.alpha_weight_decay)
+    resume_ckpt = None
+    if config.resume is not None:
+        resume_ckpt = torch.load(config.resume, map_location=device)
+        logger.info("Resuming from {} (phase={}, epoch={})".format(
+            config.resume, resume_ckpt["phase"], resume_ckpt["epoch"]))
 
-    # split data to train/validation
-    n_train = len(train_data)
-    split = n_train // 2
-    indices = list(range(n_train))
-    train_sampler = torch.utils.data.sampler.SubsetRandomSampler(indices[:split])
-    valid_sampler = torch.utils.data.sampler.SubsetRandomSampler(indices[split:])
-    train_loader = torch.utils.data.DataLoader(train_data,
-                                               batch_size=config.batch_size,
-                                               sampler=train_sampler,
-                                               num_workers=config.workers,
-                                               pin_memory=True)
-    valid_loader = torch.utils.data.DataLoader(train_data,
-                                               batch_size=config.batch_size,
-                                               sampler=valid_sampler,
-                                               num_workers=config.workers,
-                                               pin_memory=True)
+    if resume_ckpt is not None and resume_ckpt["phase"] == "eval":
+        # Search already finished in the interrupted run; skip straight to
+        # resuming the evaluation-training phase.
+        best_genotype = resume_ckpt["genotype"]
+        logger.info("Skipping search phase; resuming eval phase with genotype: {}".format(best_genotype))
+    else:
+        net_crit = nn.CrossEntropyLoss().to(device)
+        model = SearchCNNController(input_channels, config.init_channels, n_classes, config.layers,
+                                    net_crit, device_ids=config.gpus)
+        model = model.to(device)
 
-    lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-        w_optim, config.epochs, eta_min=config.w_lr_min)
-    architect = Architect(model, config.w_momentum, config.w_weight_decay)
+        # weights optimizer
+        w_optim = torch.optim.SGD(model.weights(), config.w_lr, momentum=config.w_momentum,
+                                  weight_decay=config.w_weight_decay)
+        # alphas optimizer
+        alpha_optim = torch.optim.Adam(model.alphas(), config.alpha_lr, betas=(0.5, 0.999),
+                                       weight_decay=config.alpha_weight_decay)
 
-    # training loop
-    best_top1 = 0.
-    for epoch in range(config.epochs):
-        lr_scheduler.step()
-        lr = lr_scheduler.get_lr()[0]
+        # split data to train/validation
+        n_train = len(train_data)
+        split = n_train // 2
+        indices = list(range(n_train))
+        train_sampler = torch.utils.data.sampler.SubsetRandomSampler(indices[:split])
+        valid_sampler = torch.utils.data.sampler.SubsetRandomSampler(indices[split:])
+        train_loader = torch.utils.data.DataLoader(train_data,
+                                                   batch_size=config.batch_size,
+                                                   sampler=train_sampler,
+                                                   num_workers=config.workers,
+                                                   pin_memory=True)
+        valid_loader = torch.utils.data.DataLoader(train_data,
+                                                   batch_size=config.batch_size,
+                                                   sampler=valid_sampler,
+                                                   num_workers=config.workers,
+                                                   pin_memory=True)
 
-        model.print_alphas(logger)
+        *_, test_data = utils.get_data(
+            config.dataset, config.data_path, cutout_length=0, validation=True, no_augment=True)
+        test_loader = torch.utils.data.DataLoader(test_data,
+                                                  batch_size=config.batch_size,
+                                                  shuffle=False,
+                                                  num_workers=config.workers,
+                                                  pin_memory=True)
 
-        # training
-        train(train_loader, valid_loader, model, architect, w_optim, alpha_optim, lr, epoch)
+        lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+            w_optim, config.epochs, eta_min=config.w_lr_min)
 
-        # validation
-        cur_step = (epoch+1) * len(train_loader)
-        top1 = validate(valid_loader, model, epoch, cur_step)
+        start_epoch = 0
+        best_top1 = 0.
+        best_genotype = model.genotype()
+        if resume_ckpt is not None:
+            load_search_checkpoint(resume_ckpt, model, w_optim, alpha_optim, lr_scheduler)
+            start_epoch = resume_ckpt["epoch"]
+            best_top1 = resume_ckpt["best_top1"]
+            best_genotype = resume_ckpt["best_genotype"]
+            logger.info("Resumed search phase from epoch {}".format(start_epoch))
 
-        # log
-        # genotype
-        genotype = model.genotype()
-        logger.info("genotype = {}".format(genotype))
+        architect = Architect(model, config.w_momentum, config.w_weight_decay)
 
-        # genotype as a image
-        plot_path = os.path.join(config.plot_path, "EP{:02d}".format(epoch+1))
-        caption = "Epoch {}".format(epoch+1)
-        try:
-            plot(genotype.normal, plot_path + "-normal", caption)
-            plot(genotype.reduce, plot_path + "-reduce", caption)
-        except Exception as e:
-            logger.warning("Failed to plot genotype (graphviz may not be installed): {}".format(e))
+        # training loop
+        for epoch in range(start_epoch, config.epochs):
+            lr_scheduler.step()
+            lr = lr_scheduler.get_lr()[0]
 
-        # save
-        if best_top1 < top1:
-            best_top1 = top1
-            best_genotype = genotype
-            is_best = True
-        else:
-            is_best = False
-        utils.save_checkpoint(model, config.path, is_best)
+            model.print_alphas(logger)
 
-        print("")
+            # training
+            train(train_loader, valid_loader, model, architect, w_optim, alpha_optim, lr, epoch)
 
-    logger.info("Final best Prec@1 = {:.4%}".format(best_top1))
-    logger.info("Best Genotype = {}".format(best_genotype))
-    exp_logger.log_pytorch_model(model, f"DARTS_{config.dataset}", x=None, path=config.tmpdir, run_id=False)
+            # validation
+            cur_step = (epoch+1) * len(train_loader)
+            top1 = validate(valid_loader, model, epoch, cur_step)
+            validate(test_loader, model, epoch, cur_step, split_name="test")
 
-    # Free search-phase memory before evaluation
-    del model, architect, w_optim, alpha_optim, lr_scheduler
-    del train_loader, valid_loader, train_data
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
+            # log
+            # genotype
+            genotype = model.genotype()
+            logger.info("genotype = {}".format(genotype))
+
+            # genotype as a image
+            plot_path = os.path.join(config.plot_path, "EP{:02d}".format(epoch+1))
+            caption = "Epoch {}".format(epoch+1)
+            try:
+                plot(genotype.normal, plot_path + "-normal", caption)
+                plot(genotype.reduce, plot_path + "-reduce", caption)
+            except Exception as e:
+                logger.warning("Failed to plot genotype (graphviz may not be installed): {}".format(e))
+
+            # save
+            if best_top1 < top1:
+                best_top1 = top1
+                best_genotype = genotype
+                is_best = True
+            else:
+                is_best = False
+            utils.save_checkpoint(model, config.path, is_best)
+            save_search_checkpoint(search_ckpt_path, epoch+1, model, w_optim, alpha_optim, lr_scheduler,
+                                    best_top1, best_genotype)
+
+            print("")
+
+        logger.info("Final best Prec@1 = {:.4%}".format(best_top1))
+        logger.info("Best Genotype = {}".format(best_genotype))
+        exp_logger.log_pytorch_model(model, f"DARTS_{config.dataset}", x=None, path=config.tmpdir, run_id=False)
+
+        # Free search-phase memory before evaluation
+        del model, architect, w_optim, alpha_optim, lr_scheduler
+        del train_loader, valid_loader, test_loader, test_data
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
+    del train_data
 
     # Evaluation phase: train and evaluate the discovered architecture ===
     logger.info("=" * 60)
     logger.info("Starting evaluation phase: training discovered architecture")
     logger.info("=" * 60)
 
-    evaluate_architecture(best_genotype, input_channels, n_classes)
-
+    eval_resume_ckpt = resume_ckpt if resume_ckpt is not None and resume_ckpt["phase"] == "eval" else None
+    evaluate_architecture(best_genotype, input_channels, n_classes,
+                           checkpoint_path=eval_ckpt_path, resume_ckpt=eval_resume_ckpt)
 
     exp_logger.end_run()
 
@@ -191,7 +276,7 @@ def train(train_loader, valid_loader, model, architect, w_optim, alpha_optim, lr
     logger.info("Train: [{:2d}/{}] Final Prec@1 {:.4%}".format(epoch+1, config.epochs, top1.avg))
 
 
-def validate(valid_loader, model, epoch, cur_step):
+def validate(valid_loader, model, epoch, cur_step, split_name="val"):
     top1 = utils.AverageMeter()
     top5 = utils.AverageMeter()
     losses = utils.AverageMeter()
@@ -213,21 +298,22 @@ def validate(valid_loader, model, epoch, cur_step):
 
             if step % config.print_freq == 0 or step == len(valid_loader)-1:
                 logger.info(
-                    "Valid: [{:2d}/{}] Step {:03d}/{:03d} Loss {losses.avg:.3f} "
+                    "{}: [{:2d}/{}] Step {:03d}/{:03d} Loss {losses.avg:.3f} "
                     "Prec@(1,5) ({top1.avg:.1%}, {top5.avg:.1%})".format(
-                        epoch+1, config.epochs, step, len(valid_loader)-1, losses=losses,
-                        top1=top1, top5=top5))
+                        split_name.capitalize(), epoch+1, config.epochs, step, len(valid_loader)-1,
+                        losses=losses, top1=top1, top5=top5))
 
-    exp_logger.log_metric('search/val loss', losses.avg, epoch, "search epoch")
-    exp_logger.log_metric('search/val accuracy', top1.avg, epoch, "search epoch")
-    exp_logger.log_metric('search/val top5', top5.avg, epoch, "search epoch")
+    exp_logger.log_metric(f'search/{split_name} loss', losses.avg, epoch, "search epoch")
+    exp_logger.log_metric(f'search/{split_name} accuracy', top1.avg, epoch, "search epoch")
+    exp_logger.log_metric(f'search/{split_name} top5', top5.avg, epoch, "search epoch")
 
-    logger.info("Valid: [{:2d}/{}] Final Prec@1 {:.4%}".format(epoch+1, config.epochs, top1.avg))
+    logger.info("{}: [{:2d}/{}] Final Prec@1 {:.4%}".format(
+        split_name.capitalize(), epoch+1, config.epochs, top1.avg))
 
     return top1.avg
 
 
-def evaluate_architecture(genotype, input_channels, n_classes):
+def evaluate_architecture(genotype, input_channels, n_classes, checkpoint_path=None, resume_ckpt=None):
     """Train the discovered architecture from scratch and evaluate on test set."""
     # Load data with same augmentation as search phase (no cutout)
     *_, eval_train_data = utils.get_data(
@@ -268,9 +354,17 @@ def evaluate_architecture(genotype, input_channels, n_classes):
         optimizer, config.eval_epochs)
 
     # Training loop
+    start_epoch = 0
     best_top1 = 0.
     best_state_dict = None
-    for epoch in range(config.eval_epochs):
+    if resume_ckpt is not None:
+        load_eval_checkpoint(resume_ckpt, eval_model, optimizer, lr_scheduler)
+        start_epoch = resume_ckpt["epoch"]
+        best_top1 = resume_ckpt["best_top1"]
+        best_state_dict = resume_ckpt["best_state_dict"]
+        logger.info("Resumed eval phase from epoch {}".format(start_epoch))
+
+    for epoch in range(start_epoch, config.eval_epochs):
         lr_scheduler.step()
         drop_prob = config.eval_drop_path_prob * epoch / config.eval_epochs
         eval_model.module.drop_path_prob(drop_prob)
@@ -284,6 +378,10 @@ def evaluate_architecture(genotype, input_channels, n_classes):
         if best_top1 < top1:
             best_top1 = top1
             best_state_dict = copy.deepcopy(eval_model.state_dict())
+
+        if checkpoint_path is not None:
+            save_eval_checkpoint(checkpoint_path, epoch+1, genotype, eval_model, optimizer, lr_scheduler,
+                                  best_top1, best_state_dict)
 
     logger.info("Eval: Final best test Prec@1 = {:.4%}".format(best_top1))
     eval_model.load_state_dict(best_state_dict)

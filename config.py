@@ -73,6 +73,8 @@ class SearchConfig(BaseConfig):
         parser.add_argument("--no-logger", action="store_true")
         parser.add_argument("--api", type=str, default="wandb")
         parser.add_argument("--exp_name", type=str, default="NAS")
+        parser.add_argument("--run_name", type=str, default=None,
+                            help="name for the wandb/mlflow run (defaults to an auto-generated name)")
         parser.add_argument("--port", type=int, default=27028)
         parser.add_argument(
             "--log_path",
@@ -156,6 +158,8 @@ class AugmentConfig(BaseConfig):
         parser.add_argument("--logger", type=bool, default=True)
         parser.add_argument("--api", type=str, default="wandb")
         parser.add_argument("--exp_name", type=str, default="NAS")
+        parser.add_argument("--run_name", type=str, default=None,
+                            help="name for the wandb/mlflow run (defaults to an auto-generated name)")
         parser.add_argument("--port", type=int, default=27028)
         parser.add_argument(
             "--log_path",

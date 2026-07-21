@@ -70,9 +70,9 @@ def load_eval_checkpoint(ckpt, model, optimizer, lr_scheduler):
 
 
 def main():
-    exp_logger.start_run(group="DARTS")
+    exp_logger.start_run(group="DARTS", run_name=config.run_name)
     for attr, value in sorted(vars(config).items()):
-        if attr in ("logger", "api", "exp_name", "port", "log_path", "tmpdir"):
+        if attr in ("logger", "api", "exp_name", "run_name", "port", "log_path", "tmpdir"):
             continue
         exp_logger.log_parameter(attr, str(value))
     logger.info("Logger is set - training start")

@@ -104,7 +104,8 @@ class SearchConfig(BaseConfig):
 
         # checkpointing
         parser.add_argument('--resume', type=str, default=None,
-                            help='Path to a checkpoint.pt (search or eval phase) to resume an '
+                            help='Path to a checkpoint.pt (search or eval phase), or to a run '
+                                 'directory (e.g. searchs/<name>/) containing one, to resume an '
                                  'interrupted run from. The checkpoint records which phase it '
                                  'belongs to, so this works whether the run was interrupted '
                                  'during search or during the post-search evaluation training.')

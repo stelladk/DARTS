@@ -99,9 +99,20 @@ def main():
 
     resume_ckpt = None
     if config.resume is not None:
-        resume_ckpt = torch.load(config.resume, map_location=device)
+        resume_path = config.resume
+        if os.path.isdir(resume_path):
+            # Accept a run directory (e.g. searchs/<name>/) and pick whichever
+            # checkpoint is present, preferring the later eval-phase one.
+            candidates = [os.path.join(resume_path, "eval_checkpoint.pt"),
+                          os.path.join(resume_path, "checkpoint.pt")]
+            found = [c for c in candidates if os.path.isfile(c)]
+            if not found:
+                raise FileNotFoundError(
+                    "No checkpoint.pt or eval_checkpoint.pt found in resume directory: {}".format(resume_path))
+            resume_path = found[0]
+        resume_ckpt = torch.load(resume_path, map_location=device)
         logger.info("Resuming from {} (phase={}, epoch={})".format(
-            config.resume, resume_ckpt["phase"], resume_ckpt["epoch"]))
+            resume_path, resume_ckpt["phase"], resume_ckpt["epoch"]))
 
     if resume_ckpt is not None and resume_ckpt["phase"] == "eval":
         # Search already finished in the interrupted run; skip straight to

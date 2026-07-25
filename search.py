@@ -110,7 +110,10 @@ def main():
                 raise FileNotFoundError(
                     "No checkpoint.pt or eval_checkpoint.pt found in resume directory: {}".format(resume_path))
             resume_path = found[0]
-        resume_ckpt = torch.load(resume_path, map_location=device)
+        # weights_only=False: our checkpoints hold a Genotype namedtuple and
+        # optimizer/scheduler state, not just tensors. PyTorch >= 2.6 defaults
+        # to weights_only=True, which rejects them.
+        resume_ckpt = torch.load(resume_path, map_location=device, weights_only=False)
         logger.info("Resuming from {} (phase={}, epoch={})".format(
             resume_path, resume_ckpt["phase"], resume_ckpt["epoch"]))
 
